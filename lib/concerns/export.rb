@@ -1,11 +1,29 @@
+# require 'debugger'; 
+
 module Concerns::Export
+  require 'yaml'
+
   extend ActiveSupport::Concern
   include LoaderHelper
 
+  STANDARD_CALENDAR = YAML::load_file(File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'standard_calendar.yaml')))
+  FIELD_IDS = YAML::load_file(File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'field_id.yaml')))
+
+  def self.week_days calendar
+    week_days = {}
+    calendar['week_days'].each do |week_day| 
+      day_type = week_day['day_type'];
+      week_days[day_type] = week_day unless day_type == 0
+    end
+    week_days
+  end
+
+  STANDARD_WEEK_DAYS = self.week_days STANDARD_CALENDAR
+  
+
   def generate_xml
     @uid = 1
-    request_from = Rails.application.routes.recognize_path(request.referrer)
-    get_sorted_query unless request_from[:controller] =~ /loader/
+    get_sorted_query
     @resource_id_to_uid = {}
     @task_id_to_uid = {}
     @version_id_to_uid = {}
@@ -13,49 +31,45 @@ module Concerns::Export
 
     export = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
       resources = @project.assignable_users
-      xml.Project {
+      xml.Project('xmlns' => 'http://schemas.microsoft.com/project') {
         xml.Title @project.name
         xml.ExtendedAttributes {
           xml.ExtendedAttribute {
-            xml.FieldID 188744000
-            xml.FieldName 'Text14'
+            xml.FieldID FIELD_IDS[@settings[:redmine_status_field_name]]
+            xml.FieldName @settings[:redmine_status_field_name]
             xml.Alias @settings[:redmine_status_alias]
           }
           xml.ExtendedAttribute {
-            xml.FieldID 188744001
-            xml.FieldName 'Text15'
+            xml.FieldID FIELD_IDS[@settings[:redmine_id_field_name]]
+            xml.FieldName @settings[:redmine_id_field_name]
             xml.Alias @settings[:redmine_id_alias]
           }
           xml.ExtendedAttribute {
-            xml.FieldID 188744002
-            xml.FieldName 'Text16'
+            xml.FieldID FIELD_IDS[@settings[:tracker_field_name]]
+            xml.FieldName @settings[:tracker_field_name]
             xml.Alias @settings[:tracker_alias]
           }
         }
         xml.Calendars {
           xml.Calendar {
             xml.UID @uid
-            xml.Name 'Standard'
+            xml.Name STANDARD_CALENDAR[:name]
             xml.IsBaseCalendar 1
             xml.IsBaselineCalendar 0
             xml.BaseCalendarUID 0
-            xml.Weekdays {
-              (1..7).each do |day|
+            xml.Weekdays{
+              STANDARD_CALENDAR['week_days'].each do |week_day|
                 xml.Weekday {
-                  xml.DayType day
-                  if day.in?([1, 7])
-                    xml.DayWorking 0
-                  else
-                    xml.DayWorking 1
+                  xml.DayType week_day['day_type']
+                  xml.DayWorking week_day['day_working']
+                  if week_day.key?('working_times')
                     xml.WorkingTimes {
-                      xml.WorkingTime {
-                        xml.FromTime '09:00:00'
-                        xml.ToTime '13:00:00'
-                      }
-                      xml.WorkingTime {
-                        xml.FromTime '14:00:00'
-                        xml.ToTime '18:00:00'
-                      }
+                      week_day['working_times'].each do |working_time| 
+                        xml.WorkingTime {
+                          xml.FromTime working_time['from_time']
+                          xml.ToTime working_time['to_time']
+                        }
+                      end
                     }
                   end
                 }
@@ -156,10 +170,29 @@ module Concerns::Export
     return export.to_xml, filename
   end
 
+  def issue_list_mine(issues)
+    # ancestors = []
+    issues.each do |issue|
+      # while (ancestors.any? && !issue.is_descendant_of?(ancestors.last))
+      #   ancestors.pop
+      # end
+      issue.class.module_eval { attr_accessor :level}
+      issue.level = issue.ancestors.count
+      # ancestors << issue unless issue.leaf?
+    end
+    return issues
+  end
+
   def determine_nesting(issues, versions_count)
     versions_count ||= 0
     nested_issues = []
-    leveled_tasks = issues.sort_by(&:id).group_by(&:level)
+    # debugger
+    # leveled_tasks = issues.sort_by(&:id).group_by(&:level)
+    # issue_list(issue.descendants.visible.sort_by(&:lft)) do |child, level|
+    leveled = issues.sort_by(&:id)
+    leveled_tasks = issue_list_mine(leveled).group_by(&:level)
+    # .group_by(&:level)
+    # grouped_issue_list(issues, @query, @issue_count_by_group) do |issue, level, group_name, group_count, group_totals|
     leveled_tasks.sort_by{ |key| key }.each do |level, grouped_issues|
       grouped_issues.each_with_index do |issue, index|
         outlinenumber = if issue.child?
@@ -225,12 +258,12 @@ module Concerns::Export
       xml.LateFinish finish_date.to_time.to_s(:ms_xml)
       time = get_scorm_time(struct.estimated_hours)
       xml.Work time
-      #xml.Duration time
+      xml.Duration get_scorm_time(duration(start_date, finish_date)*8)
       #xml.ManualDuration time
       #xml.RemainingDuration time
       #xml.RemainingWork time
       #xml.DurationFormat 7
-      xml.ActualWork get_scorm_time(struct.total_spent_hours)
+      xml.ActualWork get_scorm_time(struct.total_spent_hours) unless struct.total_spent_hours.zero?
       xml.Milestone 0
       xml.FixedCostAccrual 3
       xml.ConstraintType 2
@@ -309,5 +342,15 @@ module Concerns::Export
       xml.OutlineNumber @uid
       xml.OutlineLevel 1
     }
+  end
+
+  def duration(start_date, finish_date)
+    duration = 0
+    start_date.upto(finish_date) do |day|
+      if STANDARD_WEEK_DAYS[day.cwday]['day_working'] == 1
+        duration += 1
+      end
+    end
+    duration
   end
 end

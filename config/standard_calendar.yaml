@@ -1,0 +1,41 @@
+name: STANDARD
+week_days: 
+  - day_type: 1 # Mo
+    day_working: 1
+    working_times:
+      - from_time: "08:00:00"
+        to_time: "12:00:00"
+      - from_time: "13:00:00"
+        to_time: "17:00:00"
+  - day_type: 2 # Tu
+    day_working: 1
+    working_times:
+      - from_time: "08:00:00"
+        to_time: "12:00:00"
+      - from_time: "13:00:00"
+        to_time: "17:00:00"
+  - day_type: 3 # We
+    day_working: 1
+    working_times:
+      - from_time: "08:00:00"
+        to_time: "12:00:00"
+      - from_time: "13:00:00"
+        to_time: "17:00:00"
+  - day_type: 4 # Th
+    day_working: 1
+    working_times:
+      - from_time: "08:00:00"
+        to_time: "12:00:00"
+      - from_time: "13:00:00"
+        to_time: "17:00:00"
+  - day_type: 5 # Fri
+    day_working: 1
+    working_times:
+      - from_time: "08:00:00"
+        to_time: "12:00:00"
+      - from_time: "13:00:00"
+        to_time: "17:00:00"
+  - day_type: 6 # Sa
+    day_working: 0
+  - day_type: 7 # Su
+    day_working: 0

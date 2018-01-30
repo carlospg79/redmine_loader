@@ -10,7 +10,8 @@ module Concerns::Import
       (fields - @ignore_fields[:import]).each do |field|
         eval("struct.#{field} = task[:#{field}]#{".try(:split, ', ')" if field.in?(%w(predecessors delays))}")
       end
-      struct.status_id ||= IssueStatus.default
+      # struct.status_id ||= IssueStatus.default
+      struct.status_id ||= Tracker.first_or_initialize.default_status.id
       struct.done_ratio ||= 0
       tasks_to_import[index.to_i] = struct
     end
@@ -31,7 +32,8 @@ module Concerns::Import
     redmine_id_field_id = (doc.xpath("Project/ExtendedAttributes/ExtendedAttribute[Alias='#{@settings[:redmine_id_alias]}']/FieldID").presence || doc.xpath("Project/ExtendedAttributes/ExtendedAttribute[FieldName='#{@settings[:redmine_id_field_name]}']/FieldID")).try(:text).try(:to_i)
     redmine_status_field_id = (doc.xpath("Project/ExtendedAttributes/ExtendedAttribute[Alias='#{@settings[:redmine_status_alias]}']/FieldID").presence || doc.xpath("Project/ExtendedAttributes/ExtendedAttribute[FieldName='#{@settings[:redmine_status_field_name]}']/FieldID")).try(:text).try(:to_i)
 
-    default_issue_status_id = IssueStatus.default.id
+    # default_issue_status_id = IssueStatus.default.id
+    default_issue_status_id = Tracker.first_or_initialize.default_status.id
 
     doc.xpath('Project/Tasks/Task').each do |task|
       begin
@@ -39,8 +41,9 @@ module Concerns::Import
         struct = ImportTask.new
         struct.uid = task.value_at('UID', :to_i)
         next if struct.uid == 0
+        struct.id = task.value_at('ID', :to_i)
         struct.milestone = task.value_at('Milestone', :to_i)
-        next unless struct.milestone.try(:zero?)
+        # next unless struct.milestone.try(:zero?)
         status_name = task.xpath("ExtendedAttribute[FieldID='#{redmine_status_field_id}']/Value").try(:text)
         struct.status_id = status_name.present? ? IssueStatus.find_by_name(status_name).id : default_issue_status_id
         struct.level = task.value_at('OutlineLevel', :to_i)
@@ -53,6 +56,7 @@ module Concerns::Import
         struct.tracker_name = task.xpath("ExtendedAttribute[FieldID='#{tracker_field_id}']/Value").try(:text)
         struct.tid = task.xpath("ExtendedAttribute[FieldID='#{redmine_id_field_id}']/Value").try(:text).try(:to_i)
         struct.estimated_hours = task.at('Duration').try{ |e| e.text.delete("PT").split(/H|M|S/)[0...-1].join(':') } if struct.milestone.try(:zero?)
+        struct.estimated_hours ||= 0
         struct.done_ratio = task.value_at('PercentComplete', :to_i)
         struct.description = task.value_at('Notes', :strip)
         struct.predecessors = task.xpath('PredecessorLink').map { |predecessor| predecessor.value_at('PredecessorUID', :to_i) }
@@ -66,7 +70,8 @@ module Concerns::Import
       end
     end
 
-    tasks = tasks.compact.uniq.sort_by(&:uid)
+    # tasks = tasks.compact.uniq.sort_by(&:uid)
+    tasks = tasks.compact.uniq.sort_by(&:id)
 
     set_assignment_to_task(doc, tasks)
     logger.debug "DEBUG: Tasks: #{tasks.inspect}"
@@ -79,7 +84,7 @@ module Concerns::Import
     resource_by_user = get_bind_resource_users(doc)
     doc.xpath('Project/Assignments/Assignment').each do |as|
       resource_id = as.at('ResourceUID').text.to_i
-      next if resource_id == Import::NOT_USER_ASSIGNED
+      next if resource_id == Importer::NOT_USER_ASSIGNED
       task_uid = as.at('TaskUID').text.to_i
       assigned_task = tasks.detect { |task| task.uid == task_uid }
       next unless assigned_task

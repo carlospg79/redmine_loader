@@ -1,4 +1,4 @@
-class Import
+class Importer
   require 'yaml'
 
   @tasks = []
@@ -23,10 +23,14 @@ class Import
 
     Issue.transaction do
       to_import.each do |source_issue|
-        unless source_issue.milestone.to_i == 1
+        unless source_issue.milestone.to_i == 11
           issue = update_existing ? Issue.where("id = ? AND project_id = ?", source_issue.tid, project_id).first_or_initialize : Issue.new
           issue.tracker_id = source_issue.tracker_id
-          issue.subject = source_issue.subject.slice(0, 246) + '_imported' # Max length of this field is 255
+
+          issue.subject = source_issue.subject.slice(0, 255) #+ '_imported' # Max length of this field is 255
+          if source_issue.milestone.to_i == 1
+            issue.subject = source_issue.subject.slice(0, 250) + '_HITO' # Max length of this field is 255
+          end
           issue.project_id = project_id
           issue.author_id = user.id
           issue.is_private = source_issue.try(:is_private) ? 1 : 0

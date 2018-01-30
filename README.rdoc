@@ -27,6 +27,3 @@ Uninstall:
     rm -Rf plugins/redmine_loader public/plugin_assets/redmine_loader
 
 and restart redmine
-
-
-2018/01/24 Update. Export funcionality seems to be working again.

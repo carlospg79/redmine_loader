@@ -20,5 +20,6 @@ class ImportTask < Struct.new(:assigned_to,
                         :subject,
                         :tracker_id,
                         :tracker_name,
-                        :uid)
+                        :uid,
+                        :id)
 end

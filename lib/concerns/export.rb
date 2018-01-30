@@ -22,6 +22,10 @@ module Concerns::Export
   
 
   def generate_xml
+    # debugger
+    # Debugger.wait_connection = true
+    # Debugger.start_remote('10.200.222.158',3001)
+    # debugger
     @uid = 1
     get_sorted_query
     @resource_id_to_uid = {}
@@ -218,7 +222,8 @@ module Concerns::Export
   end
 
   def get_scorm_time time
-    return 'PT8H0M0S' if time.nil? || time.zero?
+    return 'PT0H0M0S' if time.zero?
+    return 'PT8H0M0S' if time.nil?
     time = time.to_s.split('.')
     hours = time.first.to_i
     minutes = time.last.to_i == 0 ? 0 : (60 * "0.#{time.last}".to_f).to_i
@@ -226,12 +231,18 @@ module Concerns::Export
   end
 
   def write_task(xml, struct, id)
+    milestone = 0
+    issueName = struct.subject
+    if struct.subject.end_with?("_HITO") # HITO is mileston in spanish. you can change this if you want
+      milestone = 1
+      issueName = struct.subject[0..-6]
+    end
     @uid += 1
     @task_id_to_uid[struct.id] = @uid
     xml.Task {
       xml.UID @uid
       xml.ID id.next
-      xml.Name(struct.subject)
+      xml.Name(issueName)
       xml.Notes(struct.description) unless ignore_field?(:description, :export)
       xml.Active 1
       xml.IsNull 0
@@ -241,11 +252,12 @@ module Concerns::Export
       start_date = struct.issue.next_working_date(struct.start_date || struct.created_on.to_date)
       xml.Start start_date.to_time.to_s(:ms_xml)
       finish_date = if struct.due_date
-                      if struct.issue.next_working_date(struct.due_date).day == start_date.day
-                        start_date.next
-                      else
-                        struct.issue.next_working_date(struct.due_date)
-                      end
+                      struct.due_date
+                      # if struct.issue.next_working_date(struct.due_date).day == start_date.day
+                      #   start_date.next
+                      # else
+                      #  struct.issue.next_working_date(struct.due_date)
+                      # end
                     else
                       start_date.next
                     end
@@ -264,7 +276,7 @@ module Concerns::Export
       #xml.RemainingWork time
       #xml.DurationFormat 7
       xml.ActualWork get_scorm_time(struct.total_spent_hours) unless struct.total_spent_hours.zero?
-      xml.Milestone 0
+      xml.Milestone milestone
       xml.FixedCostAccrual 3
       xml.ConstraintType 2
       xml.ConstraintDate start_date.to_time.to_s(:ms_xml)
@@ -346,9 +358,11 @@ module Concerns::Export
 
   def duration(start_date, finish_date)
     duration = 0
-    start_date.upto(finish_date) do |day|
-      if STANDARD_WEEK_DAYS[day.cwday]['day_working'] == 1
-        duration += 1
+    if start_date != finish_date
+      start_date.upto(finish_date) do |day|
+        if STANDARD_WEEK_DAYS[day.cwday]['day_working'] == 1
+          duration += 1
+        end
       end
     end
     duration

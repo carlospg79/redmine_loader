@@ -11,11 +11,14 @@ class LoaderController < ApplicationController
   include Concerns::Export
   include QueriesHelper
   include SortHelper
+  include IssuesHelper
+  # include Import_task
+  
 
   require 'zlib'
   require 'tempfile'
   require 'nokogiri'
-
+  # require 'debugger'
   # This allows to update the existing task in Redmine from MS Project
   ActiveRecord::Base.lock_optimistically = false
 
@@ -26,7 +29,7 @@ class LoaderController < ApplicationController
     begin
       xmlfile = params[:import][:xmlfile].try(:tempfile)
       if xmlfile
-        @import = Import.new
+        @import = Importer.new
 
         byte = xmlfile.getc
         xmlfile.rewind
@@ -37,7 +40,7 @@ class LoaderController < ApplicationController
           xmldoc = Nokogiri::XML::Document.parse(readxml).remove_namespaces!
           @import.tasks = get_tasks_from_xml(xmldoc)
         end
-
+        # @import.tasks.sort_by {&:outlinenumber}
         subjects = @import.tasks.map(&:subject)
         @duplicates = subjects.select{ |subj| subjects.count(subj) > 1 }.uniq
 
@@ -78,34 +81,34 @@ class LoaderController < ApplicationController
 
     # Right, good to go! Do the import.
     begin
-      milestones = tasks_to_import.select { |task| task.milestone == '1' }
+      milestones = tasks_to_import.select { |task| task.milestone == '11' } # bad condition to have a 0 milestone array.
       issues = tasks_to_import - milestones
       issues_info = tasks_to_import.map { |issue| {title: issue.subject, uid: issue.uid, outlinenumber: issue.outlinenumber, predecessors: issue.predecessors} }
 
-      if tasks_to_import.size <= tasks_per_time
-        uid_to_issue_id, outlinenumber_to_issue_id = Import.import_tasks(tasks_to_import, @project.id, user, nil, update_existing, import_versions)
-        Import.map_subtasks_and_parents(issues_info, @project.id, nil, uid_to_issue_id, outlinenumber_to_issue_id)
-        Import.map_versions_and_relations(milestones, issues, @project.id, nil, import_versions, uid_to_issue_id)
+      if tasks_to_import.size <= tasks_per_time * 100
+        uid_to_issue_id, outlinenumber_to_issue_id = Importer.import_tasks(tasks_to_import, @project.id, user, nil, update_existing, import_versions)
+        Importer.map_subtasks_and_parents(issues_info, @project.id, nil, uid_to_issue_id, outlinenumber_to_issue_id)
+        Importer.map_versions_and_relations(milestones, issues, @project.id, nil, import_versions, uid_to_issue_id)
 
         flash[:notice] = l(:imported_successfully) + issues.count.to_s
         redirect_to project_issues_path(@project)
         return
       else
         tasks_to_import.each_slice(tasks_per_time).each do |batch|
-          Import.delay(queue: import_name, priority: 1).import_tasks(batch, @project.id, user, import_name, update_existing, import_versions)
+          Importer.delay(queue: import_name, priority: 1).import_tasks(batch, @project.id, user, import_name, update_existing, import_versions)
         end
 
         issues_info.each_slice(50).each do |batch|
-          Import.delay(queue: import_name, priority: 3).map_subtasks_and_parents(batch, @project.id, import_name)
+          Importer.delay(queue: import_name, priority: 3).map_subtasks_and_parents(batch, @project.id, import_name)
         end
 
         issues.each_slice(tasks_per_time).each do |batch|
-          Import.delay(queue: import_name, priority: 4).map_versions_and_relations(milestones, batch, @project.id, import_name, import_versions)
+          Importer.delay(queue: import_name, priority: 4).map_versions_and_relations(milestones, batch, @project.id, import_name, import_versions)
         end
 
         Mailer.delay(queue: import_name, priority: 5).notify_about_import(user, @project, date, issues_info) # send notification that import finished
 
-        Import.delay(queue: import_name, priority: 10).clean_up(import_name)
+        Importer.delay(queue: import_name, priority: 10).clean_up(import_name)
 
         flash[:notice] = t(:your_tasks_being_imported)
       end

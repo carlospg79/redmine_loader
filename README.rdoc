@@ -27,3 +27,7 @@ Uninstall:
     rm -Rf plugins/redmine_loader public/plugin_assets/redmine_loader
 
 and restart redmine
+
+
+2018/01/24 Update. Export funcionality seems to be working again.
+2018/02/08 Added Baseline funcionality. First attempt :) Ms Project and redmine have differents points of view about tasks, and modify dates, work and duration when data is exported, so is very difficult to have a correct export.

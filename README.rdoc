@@ -17,7 +17,7 @@ Plugin initially based on redmine_loader plugin. Now almost completely rewritten
 ========
 Install:
     cd redmine
-    git clone git@github.com:m0n9oose/redmine_loader.git plugins/redmine_loader
+    git clone git@github.com:carlospg79/redmine_loader.git plugins/redmine_loader
     rake redmine:plugins:migrate RAILS_ENV=production
 (migration needs for delayed job)
 
